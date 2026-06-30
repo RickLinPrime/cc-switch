@@ -688,7 +688,11 @@ export function ClaudeDesktopProviderForm({
       activeProviderType === "codex_oauth" ? codexFastMode : undefined;
 
     delete meta.endpointAutoSelect;
-    delete meta.isFullUrl;
+    if (activeProviderType === "bytedance_modelhub") {
+      meta.isFullUrl = true;
+    } else {
+      delete meta.isFullUrl;
+    }
 
     await onSubmit({
       ...values,

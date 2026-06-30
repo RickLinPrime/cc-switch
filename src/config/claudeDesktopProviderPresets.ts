@@ -52,11 +52,12 @@ export interface ClaudeDesktopProviderPreset {
 
   baseUrl: string;
   apiKeyField?: "ANTHROPIC_AUTH_TOKEN" | "ANTHROPIC_API_KEY";
+  isFullUrl?: boolean;
 
   mode: "direct" | "proxy";
   apiFormat?: ClaudeDesktopApiFormat;
   modelRoutes?: ClaudeDesktopRoutePreset[];
-  providerType?: "github_copilot" | "codex_oauth";
+  providerType?: string;
   requiresOAuth?: boolean;
 
   endpointCandidates?: string[];
@@ -326,6 +327,23 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     endpointCandidates: ["https://generativelanguage.googleapis.com"],
     icon: "gemini",
     iconColor: "#4285F4",
+  },
+  {
+    name: "ByteDance ModelHub",
+    websiteUrl: "https://aidp.bytedance.net",
+    category: "cn_official",
+    baseUrl: "https://aidp.bytedance.net/api/modelhub/online/v2/crawl",
+    isFullUrl: true,
+    mode: "proxy",
+    apiFormat: "openai_chat",
+    providerType: "bytedance_modelhub",
+    modelRoutes: brandedRoutes(
+      "gpt-5.5-2026-04-24",
+      "gpt-5.5-2026-04-24",
+      "gpt-5.5-2026-04-24",
+    ),
+    icon: "bytedance",
+    iconColor: "#3370FF",
   },
   {
     name: "GitHub Copilot",

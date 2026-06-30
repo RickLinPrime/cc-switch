@@ -196,25 +196,21 @@ impl RequestContext {
     /// 使用共享的 ProviderRouter，确保熔断器状态跨请求保持
     ///
     /// 配置生效规则：
-    /// - 故障转移开启：超时配置正常生效（0 表示禁用超时）
-    /// - 故障转移关闭：超时配置不生效（全部传入 0）
+    /// - 流式首包超时始终生效，避免单供应商上游静默时挂住客户端
+    /// - 故障转移开启：非流式超时正常生效（0 表示禁用超时）
+    /// - 故障转移关闭：不启用重试/切换，非流式由 forwarder 默认总超时兜底
     pub fn create_forwarder(&self, state: &ProxyState) -> RequestForwarder {
-        let (non_streaming_timeout, first_byte_timeout, idle_timeout) =
-            if self.app_config.auto_failover_enabled {
-                // 故障转移开启：使用配置的值（0 = 禁用超时）
-                (
-                    self.app_config.non_streaming_timeout as u64,
-                    self.app_config.streaming_first_byte_timeout as u64,
-                    self.app_config.streaming_idle_timeout as u64,
-                )
-            } else {
-                // 故障转移关闭：不启用超时配置
-                log::debug!(
-                    "[{}] Failover disabled, timeout configs are bypassed",
-                    self.tag
-                );
-                (0, 0, 0)
-            };
+        let first_byte_timeout = self.app_config.streaming_first_byte_timeout as u64;
+        let idle_timeout = self.app_config.streaming_idle_timeout as u64;
+        let non_streaming_timeout = if self.app_config.auto_failover_enabled {
+            self.app_config.non_streaming_timeout as u64
+        } else {
+            log::debug!(
+                "[{}] Failover disabled, retries are bypassed while streaming timeouts remain active",
+                self.tag
+            );
+            0
+        };
 
         // 故障转移关闭时强制 max_retries=0（仅尝试 1 个 provider），与「不超时 + 不切换」语义一致。
         let max_retries = if self.app_config.auto_failover_enabled {
@@ -259,23 +255,12 @@ impl RequestContext {
 
     /// 获取流式超时配置
     ///
-    /// 配置生效规则：
-    /// - 故障转移开启：返回配置的值（0 表示禁用超时检查）
-    /// - 故障转移关闭：返回 0（禁用超时检查）
+    /// 配置生效规则：流式首包/静默超时始终按配置返回，0 表示禁用。
     #[inline]
     pub fn streaming_timeout_config(&self) -> StreamingTimeoutConfig {
-        if self.app_config.auto_failover_enabled {
-            // 故障转移开启：使用配置的值（0 = 禁用超时）
-            StreamingTimeoutConfig {
-                first_byte_timeout: self.app_config.streaming_first_byte_timeout as u64,
-                idle_timeout: self.app_config.streaming_idle_timeout as u64,
-            }
-        } else {
-            // 故障转移关闭：禁用流式超时检查
-            StreamingTimeoutConfig {
-                first_byte_timeout: 0,
-                idle_timeout: 0,
-            }
+        StreamingTimeoutConfig {
+            first_byte_timeout: self.app_config.streaming_first_byte_timeout as u64,
+            idle_timeout: self.app_config.streaming_idle_timeout as u64,
         }
     }
 }
@@ -300,7 +285,74 @@ pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_gemini_model_from_path;
+    use super::{extract_gemini_model_from_path, RequestContext};
+    use crate::app_config::AppType;
+    use crate::provider::Provider;
+    use crate::proxy::types::{
+        AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, RectifierConfig,
+    };
+    use std::time::Instant;
+
+    fn test_provider() -> Provider {
+        Provider {
+            id: "provider-id".to_string(),
+            name: "Provider".to_string(),
+            settings_config: serde_json::json!({}),
+            website_url: None,
+            category: Some("claude".to_string()),
+            created_at: None,
+            sort_index: None,
+            notes: None,
+            meta: None,
+            icon: None,
+            icon_color: None,
+            in_failover_queue: false,
+        }
+    }
+
+    fn test_context(auto_failover_enabled: bool) -> RequestContext {
+        let provider = test_provider();
+        RequestContext {
+            start_time: Instant::now(),
+            app_config: AppProxyConfig {
+                app_type: "claude".to_string(),
+                enabled: true,
+                auto_failover_enabled,
+                max_retries: 3,
+                streaming_first_byte_timeout: 60,
+                streaming_idle_timeout: 120,
+                non_streaming_timeout: 600,
+                circuit_failure_threshold: 3,
+                circuit_success_threshold: 2,
+                circuit_timeout_seconds: 60,
+                circuit_error_rate_threshold: 50.0,
+                circuit_min_requests: 10,
+            },
+            provider: provider.clone(),
+            providers: vec![provider],
+            current_provider_id: "provider-id".to_string(),
+            request_model: "model".to_string(),
+            outbound_model: None,
+            tag: "Claude",
+            app_type_str: "claude",
+            app_type: AppType::Claude,
+            session_id: "session".to_string(),
+            session_client_provided: true,
+            rectifier_config: RectifierConfig::default(),
+            optimizer_config: OptimizerConfig::default(),
+            copilot_optimizer_config: CopilotOptimizerConfig::default(),
+        }
+    }
+
+    #[test]
+    fn streaming_timeout_config_applies_even_when_failover_disabled() {
+        let ctx = test_context(false);
+
+        let config = ctx.streaming_timeout_config();
+
+        assert_eq!(config.first_byte_timeout, 60);
+        assert_eq!(config.idle_timeout, 120);
+    }
 
     #[test]
     fn extract_model_with_action() {

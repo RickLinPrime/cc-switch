@@ -371,7 +371,7 @@ pub fn validate_direct_provider(provider: &Provider) -> Result<(), AppError> {
 
         if matches!(
             meta.provider_type.as_deref(),
-            Some("github_copilot") | Some("codex_oauth")
+            Some("github_copilot") | Some("codex_oauth") | Some("bytedance_modelhub")
         ) {
             return Err(AppError::localized(
                 "claude_desktop.provider.type_unsupported",

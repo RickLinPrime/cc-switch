@@ -21,6 +21,7 @@ use serde_json::{json, Value};
 
 const ANTHROPIC_THINKING_PLACEHOLDER: &str = "tool call";
 const ANTHROPIC_REDACTED_THINKING_PLACEHOLDER: &str = "[redacted thinking]";
+const BYTEDANCE_MODELHUB_PROVIDER_TYPE: &str = "bytedance_modelhub";
 // Keep hints lowercase; matching lowercases only the input value.
 const REASONING_VENDOR_HINTS: &[&str] = &["moonshot", "kimi", "deepseek", "mimo", "xiaomimimo"];
 
@@ -93,6 +94,20 @@ fn is_reasoning_vendor_identifier(value: &str) -> bool {
     REASONING_VENDOR_HINTS
         .iter()
         .any(|hint| value.contains(hint))
+}
+
+fn append_modelhub_ak(base_url: &str, api_key: Option<&str>) -> String {
+    if base_url.contains("?ak=") || base_url.contains("&ak=") {
+        return base_url.to_string();
+    }
+
+    let Some(api_key) = api_key.map(str::trim).filter(|key| !key.is_empty()) else {
+        return base_url.to_string();
+    };
+
+    let encoded_key = url::form_urlencoded::byte_serialize(api_key.as_bytes()).collect::<String>();
+    let separator = if base_url.contains('?') { '&' } else { '?' };
+    format!("{base_url}{separator}ak={encoded_key}")
 }
 
 fn should_normalize_anthropic_tool_thinking_history(
@@ -327,6 +342,14 @@ fn should_preserve_reasoning_content_for_openai_chat(provider: &Provider, body: 
         .any(is_reasoning_vendor_identifier)
 }
 
+fn is_bytedance_modelhub_provider(provider: &Provider) -> bool {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.provider_type.as_deref())
+        == Some(BYTEDANCE_MODELHUB_PROVIDER_TYPE)
+}
+
 pub fn transform_claude_request_for_api_format(
     body: serde_json::Value,
     provider: &Provider,
@@ -407,6 +430,11 @@ pub fn transform_claude_request_for_api_format(
                 body,
                 preserve_reasoning_content,
             )?;
+            if is_bytedance_modelhub_provider(provider)
+                && result.get("tools").and_then(|v| v.as_array()).is_some()
+            {
+                result.as_object_mut().unwrap().remove("reasoning_effort");
+            }
             // Inject prompt_cache_key only if explicitly configured in meta
             if let Some(key) = provider
                 .meta
@@ -508,6 +536,10 @@ impl ClaudeAdapter {
         }
 
         false
+    }
+
+    fn is_bytedance_modelhub(&self, provider: &Provider) -> bool {
+        is_bytedance_modelhub_provider(provider)
     }
 
     /// 检测是否使用 OpenRouter
@@ -669,45 +701,50 @@ impl ProviderAdapter for ClaudeAdapter {
             return Ok("https://chatgpt.com/backend-api/codex".to_string());
         }
 
-        // 1. 从 env 中获取
-        if let Some(env) = provider.settings_config.get("env") {
-            if let Some(url) = env.get("ANTHROPIC_BASE_URL").and_then(|v| v.as_str()) {
-                return Ok(url.trim_end_matches('/').to_string());
-            }
-        }
-
-        // 2. 尝试直接获取
-        if let Some(url) = provider
+        let base_url = provider
             .settings_config
-            .get("base_url")
+            .get("env")
+            .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
             .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("base_url")
+                    .and_then(|v| v.as_str())
+            })
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("baseURL")
+                    .and_then(|v| v.as_str())
+            })
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("apiEndpoint")
+                    .and_then(|v| v.as_str())
+            })
+            .map(|url| url.trim_end_matches('/').to_string())
+            .ok_or_else(|| {
+                ProxyError::ConfigError("Claude Provider 缺少 base_url 配置".to_string())
+            })?;
+
+        if self.is_bytedance_modelhub(provider) {
+            return Ok(append_modelhub_ak(
+                &base_url,
+                self.extract_key(provider).as_deref(),
+            ));
         }
 
-        if let Some(url) = provider
-            .settings_config
-            .get("baseURL")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
-        }
-
-        if let Some(url) = provider
-            .settings_config
-            .get("apiEndpoint")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
-        }
-
-        Err(ProxyError::ConfigError(
-            "Claude Provider 缺少 base_url 配置".to_string(),
-        ))
+        Ok(base_url)
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<AuthInfo> {
         let provider_type = self.provider_type(provider);
+
+        if self.is_bytedance_modelhub(provider) {
+            return None;
+        }
 
         // GitHub Copilot 使用特殊的认证策略
         // 实际的 token 会在代理请求时动态获取
@@ -1065,6 +1102,31 @@ mod tests {
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-direct");
         assert_eq!(auth.strategy, AuthStrategy::Anthropic);
+    }
+
+    #[test]
+    fn test_modelhub_provider_uses_query_key_without_auth_headers() {
+        let adapter = ClaudeAdapter::new();
+        let provider = create_provider_with_meta(
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://aidp.bytedance.net/api/modelhub/online/v2/crawl",
+                    "ANTHROPIC_AUTH_TOKEN": "modelhub-ak"
+                }
+            }),
+            ProviderMeta {
+                provider_type: Some("bytedance_modelhub".to_string()),
+                api_format: Some("openai_chat".to_string()),
+                is_full_url: Some(true),
+                ..Default::default()
+            },
+        );
+
+        assert!(adapter.extract_auth(&provider).is_none());
+        assert_eq!(
+            adapter.extract_base_url(&provider).unwrap(),
+            "https://aidp.bytedance.net/api/modelhub/online/v2/crawl?ak=modelhub-ak"
+        );
     }
 
     #[test]
@@ -1662,6 +1724,79 @@ mod tests {
             transform_claude_request_for_api_format(body, &provider, "openai_chat", None, None)
                 .unwrap();
         assert!(transformed.get("stream_options").is_none());
+    }
+
+    #[test]
+    fn test_transform_modelhub_openai_chat_with_tools_strips_reasoning_effort() {
+        let provider = create_provider_with_meta(
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://aidp.bytedance.net/api/modelhub/online/v2/crawl",
+                    "ANTHROPIC_AUTH_TOKEN": "modelhub-ak"
+                }
+            }),
+            ProviderMeta {
+                provider_type: Some("bytedance_modelhub".to_string()),
+                api_format: Some("openai_chat".to_string()),
+                is_full_url: Some(true),
+                ..Default::default()
+            },
+        );
+        let body = json!({
+            "model": "gpt-5.5-2026-04-24",
+            "messages": [{ "role": "user", "content": "hello" }],
+            "max_tokens": 128,
+            "output_config": { "effort": "ultracode" },
+            "tools": [{
+                "name": "read_file",
+                "description": "Read a file",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" }
+                    },
+                    "required": ["path"]
+                }
+            }]
+        });
+
+        let transformed =
+            transform_claude_request_for_api_format(body, &provider, "openai_chat", None, None)
+                .unwrap();
+
+        assert!(transformed.get("tools").is_some());
+        assert!(transformed.get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn test_transform_modelhub_openai_chat_without_tools_keeps_reasoning_effort() {
+        let provider = create_provider_with_meta(
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://aidp.bytedance.net/api/modelhub/online/v2/crawl",
+                    "ANTHROPIC_AUTH_TOKEN": "modelhub-ak"
+                }
+            }),
+            ProviderMeta {
+                provider_type: Some("bytedance_modelhub".to_string()),
+                api_format: Some("openai_chat".to_string()),
+                is_full_url: Some(true),
+                ..Default::default()
+            },
+        );
+        let body = json!({
+            "model": "gpt-5.5-2026-04-24",
+            "messages": [{ "role": "user", "content": "hello" }],
+            "max_tokens": 128,
+            "output_config": { "effort": "ultracode" }
+        });
+
+        let transformed =
+            transform_claude_request_for_api_format(body, &provider, "openai_chat", None, None)
+                .unwrap();
+
+        assert!(transformed.get("tools").is_none());
+        assert_eq!(transformed["reasoning_effort"], "xhigh");
     }
 
     #[test]
