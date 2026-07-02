@@ -309,6 +309,7 @@ function ProviderFormFull({
     category?: ProviderCategory;
     isPartner?: boolean;
     partnerPromotionKey?: string;
+    providerType?: string;
     suggestedDefaults?: OpenClawSuggestedDefaults;
   } | null>(null);
   const [isEndpointModalOpen, setIsEndpointModalOpen] = useState(false);
@@ -1434,7 +1435,9 @@ function ProviderFormFull({
 
     // 确定 providerType（新建时从预设获取，编辑时从现有数据获取）
     const providerType =
-      templatePreset?.providerType || initialData?.meta?.providerType;
+      activePreset?.providerType ||
+      templatePreset?.providerType ||
+      initialData?.meta?.providerType;
 
     const nextMeta: ProviderMeta = {
       ...(baseMeta ?? {}),
@@ -1615,6 +1618,7 @@ function ProviderFormFull({
     if (value === "custom") {
       setActivePreset(null);
       form.reset(defaultValues);
+      setLocalIsFullUrl(false);
 
       if (appId === "codex") {
         const template = getCodexCustomTemplate();
@@ -1652,6 +1656,8 @@ function ProviderFormFull({
       category: entry.preset.category,
       isPartner: entry.preset.isPartner,
       partnerPromotionKey: entry.preset.partnerPromotionKey,
+      providerType:
+        "providerType" in entry.preset ? entry.preset.providerType : undefined,
     });
 
     if (appId === "codex") {
@@ -1666,6 +1672,7 @@ function ProviderFormFull({
           codexApiFormatFromWireApi(extractCodexWireApi(config)) ??
           "openai_responses",
       );
+      setLocalIsFullUrl(Boolean(preset.isFullUrl));
 
       form.reset({
         name: preset.nameKey ? t(preset.nameKey) : preset.name,
@@ -1733,6 +1740,7 @@ function ProviderFormFull({
         category: preset.category,
         isPartner: preset.isPartner,
         partnerPromotionKey: preset.partnerPromotionKey,
+        providerType: undefined,
         suggestedDefaults: preset.suggestedDefaults,
       });
 
@@ -1779,7 +1787,7 @@ function ProviderFormFull({
     }
 
     setLocalApiKeyField(preset.apiKeyField ?? "ANTHROPIC_AUTH_TOKEN");
-    setLocalIsFullUrl(false);
+    setLocalIsFullUrl(Boolean(preset.isFullUrl));
 
     form.reset({
       name: preset.nameKey ? t(preset.nameKey) : preset.name,

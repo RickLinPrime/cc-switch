@@ -4,6 +4,13 @@
  */
 import type { ProviderCategory } from "../types";
 import type { PresetTheme, TemplateValueConfig } from "./claudeProviderPresets";
+import {
+  BYTEDANCE_MODELHUB_BASE_URL,
+  BYTEDANCE_MODELHUB_DISPLAY_NAME,
+  BYTEDANCE_MODELHUB_MODEL,
+  BYTEDANCE_MODELHUB_NAME,
+  BYTEDANCE_MODELHUB_PROVIDER_TYPE,
+} from "./modelhubProvider";
 
 /**
  * Marker field and source values that `hermes_config.rs::get_providers`
@@ -283,6 +290,31 @@ export const hermesProviderPresets: HermesProviderPreset[] = [
       model: {
         default: "ark-code-latest",
         provider: "byteplus",
+      },
+    },
+  },
+  {
+    name: BYTEDANCE_MODELHUB_NAME,
+    websiteUrl: "https://aidp.bytedance.net",
+    settingsConfig: {
+      name: BYTEDANCE_MODELHUB_PROVIDER_TYPE,
+      base_url: BYTEDANCE_MODELHUB_BASE_URL,
+      api_key: "",
+      api_mode: "chat_completions",
+      models: [
+        {
+          id: BYTEDANCE_MODELHUB_MODEL,
+          name: BYTEDANCE_MODELHUB_DISPLAY_NAME,
+        },
+      ],
+    },
+    category: "cn_official",
+    icon: "bytedance",
+    iconColor: "#3370FF",
+    suggestedDefaults: {
+      model: {
+        default: BYTEDANCE_MODELHUB_MODEL,
+        provider: BYTEDANCE_MODELHUB_PROVIDER_TYPE,
       },
     },
   },

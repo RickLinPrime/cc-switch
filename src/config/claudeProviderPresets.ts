@@ -2,6 +2,12 @@
  * 预设供应商配置模板
  */
 import { ProviderCategory } from "../types";
+import {
+  BYTEDANCE_MODELHUB_BASE_URL,
+  BYTEDANCE_MODELHUB_MODEL,
+  BYTEDANCE_MODELHUB_NAME,
+  BYTEDANCE_MODELHUB_PROVIDER_TYPE,
+} from "./modelhubProvider";
 
 export interface TemplateValueConfig {
   label: string;
@@ -60,7 +66,11 @@ export interface ProviderPreset {
   // 供应商类型标识（用于特殊供应商检测）
   // - "github_copilot": GitHub Copilot 供应商（需要 OAuth 认证）
   // - "codex_oauth": OpenAI Codex via ChatGPT Plus/Pro 反代（需要 OAuth 认证）
-  providerType?: "github_copilot" | "codex_oauth";
+  // - "bytedance_modelhub": ByteDance ModelHub（需要 ak 查询参数鉴权）
+  providerType?: "github_copilot" | "codex_oauth" | "bytedance_modelhub";
+
+  // 是否将 base_url 视为完整 API 端点（本地代理不再追加路径）
+  isFullUrl?: boolean;
 
   // 是否需要 OAuth 认证（而非 API Key）
   requiresOAuth?: boolean;
@@ -189,6 +199,26 @@ export const providerPresets: ProviderPreset[] = [
     isPartner: true,
     partnerPromotionKey: "doubaoseed",
     icon: "doubao",
+    iconColor: "#3370FF",
+  },
+  {
+    name: BYTEDANCE_MODELHUB_NAME,
+    websiteUrl: "https://aidp.bytedance.net",
+    settingsConfig: {
+      env: {
+        ANTHROPIC_BASE_URL: BYTEDANCE_MODELHUB_BASE_URL,
+        ANTHROPIC_AUTH_TOKEN: "",
+        ANTHROPIC_MODEL: BYTEDANCE_MODELHUB_MODEL,
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: BYTEDANCE_MODELHUB_MODEL,
+        ANTHROPIC_DEFAULT_SONNET_MODEL: BYTEDANCE_MODELHUB_MODEL,
+        ANTHROPIC_DEFAULT_OPUS_MODEL: BYTEDANCE_MODELHUB_MODEL,
+      },
+    },
+    category: "cn_official",
+    apiFormat: "openai_chat",
+    providerType: BYTEDANCE_MODELHUB_PROVIDER_TYPE,
+    isFullUrl: true,
+    icon: "bytedance",
     iconColor: "#3370FF",
   },
   {

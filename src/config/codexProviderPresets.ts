@@ -8,6 +8,14 @@ import type {
   CodexChatReasoning,
 } from "../types";
 import type { PresetTheme } from "./claudeProviderPresets";
+import {
+  BYTEDANCE_MODELHUB_BASE_URL,
+  BYTEDANCE_MODELHUB_CONTEXT_WINDOW,
+  BYTEDANCE_MODELHUB_DISPLAY_NAME,
+  BYTEDANCE_MODELHUB_MODEL,
+  BYTEDANCE_MODELHUB_NAME,
+  BYTEDANCE_MODELHUB_PROVIDER_TYPE,
+} from "./modelhubProvider";
 
 export interface CodexProviderPreset {
   name: string;
@@ -32,6 +40,10 @@ export interface CodexProviderPreset {
   iconColor?: string; // 图标颜色
   // Codex API 格式
   apiFormat?: CodexApiFormat;
+  // 供应商类型标识（用于本地代理特殊处理）
+  providerType?: string;
+  // 是否将 base_url 视为完整 API 端点（本地代理不再追加路径）
+  isFullUrl?: boolean;
   // Codex Chat 本地路由模式下的模型目录
   modelCatalog?: CodexCatalogModel[];
   // Codex Responses -> Chat Completions reasoning capability defaults
@@ -230,6 +242,30 @@ export const codexProviderPresets: CodexProviderPreset[] = [
     isPartner: true,
     partnerPromotionKey: "doubaoseed",
     icon: "doubao",
+    iconColor: "#3370FF",
+  },
+  {
+    name: BYTEDANCE_MODELHUB_NAME,
+    websiteUrl: "https://aidp.bytedance.net",
+    auth: generateThirdPartyAuth(""),
+    config: generateThirdPartyConfig(
+      BYTEDANCE_MODELHUB_PROVIDER_TYPE,
+      BYTEDANCE_MODELHUB_BASE_URL,
+      BYTEDANCE_MODELHUB_MODEL,
+    ),
+    endpointCandidates: [BYTEDANCE_MODELHUB_BASE_URL],
+    apiFormat: "openai_chat",
+    providerType: BYTEDANCE_MODELHUB_PROVIDER_TYPE,
+    isFullUrl: true,
+    modelCatalog: modelCatalog([
+      {
+        model: BYTEDANCE_MODELHUB_MODEL,
+        displayName: BYTEDANCE_MODELHUB_DISPLAY_NAME,
+        contextWindow: BYTEDANCE_MODELHUB_CONTEXT_WINDOW,
+      },
+    ]),
+    category: "cn_official",
+    icon: "bytedance",
     iconColor: "#3370FF",
   },
   {

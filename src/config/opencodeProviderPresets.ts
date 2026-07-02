@@ -1,5 +1,11 @@
 import type { ProviderCategory, OpenCodeProviderConfig } from "../types";
 import type { PresetTheme, TemplateValueConfig } from "./claudeProviderPresets";
+import {
+  BYTEDANCE_MODELHUB_BASE_URL,
+  BYTEDANCE_MODELHUB_DISPLAY_NAME,
+  BYTEDANCE_MODELHUB_MODEL,
+  BYTEDANCE_MODELHUB_NAME,
+} from "./modelhubProvider";
 
 export interface OpenCodeProviderPreset {
   name: string;
@@ -479,6 +485,34 @@ export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
     isPartner: true,
     partnerPromotionKey: "byteplus",
     icon: "byteplus",
+    iconColor: "#3370FF",
+    templateValues: {
+      apiKey: {
+        label: "API Key",
+        placeholder: "",
+        editorValue: "",
+      },
+    },
+  },
+  {
+    name: BYTEDANCE_MODELHUB_NAME,
+    websiteUrl: "https://aidp.bytedance.net",
+    settingsConfig: {
+      npm: "@ai-sdk/openai-compatible",
+      name: BYTEDANCE_MODELHUB_NAME,
+      options: {
+        baseURL: BYTEDANCE_MODELHUB_BASE_URL,
+        apiKey: "",
+        setCacheKey: true,
+      },
+      models: {
+        [BYTEDANCE_MODELHUB_MODEL]: {
+          name: BYTEDANCE_MODELHUB_DISPLAY_NAME,
+        },
+      },
+    },
+    category: "cn_official",
+    icon: "bytedance",
     iconColor: "#3370FF",
     templateValues: {
       apiKey: {

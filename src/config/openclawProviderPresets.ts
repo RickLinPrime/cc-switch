@@ -8,6 +8,14 @@ import type {
   OpenClawDefaultModel,
 } from "../types";
 import type { PresetTheme, TemplateValueConfig } from "./claudeProviderPresets";
+import {
+  BYTEDANCE_MODELHUB_BASE_URL,
+  BYTEDANCE_MODELHUB_CONTEXT_WINDOW,
+  BYTEDANCE_MODELHUB_DISPLAY_NAME,
+  BYTEDANCE_MODELHUB_MODEL,
+  BYTEDANCE_MODELHUB_NAME,
+  BYTEDANCE_MODELHUB_PROVIDER_TYPE,
+} from "./modelhubProvider";
 
 /** Suggested default model configuration for a preset */
 export interface OpenClawSuggestedDefaults {
@@ -214,6 +222,37 @@ export const openclawProviderPresets: OpenClawProviderPreset[] = [
       model: { primary: "byteplus/ark-code-latest" },
       modelCatalog: {
         "byteplus/ark-code-latest": { alias: "Ark Code" },
+      },
+    },
+  },
+  {
+    name: BYTEDANCE_MODELHUB_NAME,
+    websiteUrl: "https://aidp.bytedance.net",
+    settingsConfig: {
+      baseUrl: BYTEDANCE_MODELHUB_BASE_URL,
+      apiKey: "",
+      api: "openai-completions",
+      models: [
+        {
+          id: BYTEDANCE_MODELHUB_MODEL,
+          name: BYTEDANCE_MODELHUB_DISPLAY_NAME,
+          contextWindow: BYTEDANCE_MODELHUB_CONTEXT_WINDOW,
+        },
+      ],
+    },
+    category: "cn_official",
+    icon: "bytedance",
+    iconColor: "#3370FF",
+    templateValues: {
+      apiKey: {
+        label: "API Key",
+        placeholder: "",
+        editorValue: "",
+      },
+    },
+    suggestedDefaults: {
+      model: {
+        primary: `${BYTEDANCE_MODELHUB_PROVIDER_TYPE}/${BYTEDANCE_MODELHUB_MODEL}`,
       },
     },
   },

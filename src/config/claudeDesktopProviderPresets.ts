@@ -10,6 +10,12 @@
  */
 import { ProviderCategory } from "../types";
 import type { PresetTheme } from "./claudeProviderPresets";
+import {
+  BYTEDANCE_MODELHUB_BASE_URL,
+  BYTEDANCE_MODELHUB_MODEL,
+  BYTEDANCE_MODELHUB_NAME,
+  BYTEDANCE_MODELHUB_PROVIDER_TYPE,
+} from "./modelhubProvider";
 
 export type ClaudeDesktopApiFormat =
   | "anthropic"
@@ -356,18 +362,18 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     iconColor: "#4285F4",
   },
   {
-    name: "ByteDance ModelHub",
+    name: BYTEDANCE_MODELHUB_NAME,
     websiteUrl: "https://aidp.bytedance.net",
     category: "cn_official",
-    baseUrl: "https://aidp.bytedance.net/api/modelhub/online/v2/crawl",
+    baseUrl: BYTEDANCE_MODELHUB_BASE_URL,
     isFullUrl: true,
     mode: "proxy",
     apiFormat: "openai_chat",
-    providerType: "bytedance_modelhub",
+    providerType: BYTEDANCE_MODELHUB_PROVIDER_TYPE,
     modelRoutes: brandedRoutes(
-      "gpt-5.5-2026-04-24",
-      "gpt-5.5-2026-04-24",
-      "gpt-5.5-2026-04-24",
+      BYTEDANCE_MODELHUB_MODEL,
+      BYTEDANCE_MODELHUB_MODEL,
+      BYTEDANCE_MODELHUB_MODEL,
     ),
     icon: "bytedance",
     iconColor: "#3370FF",

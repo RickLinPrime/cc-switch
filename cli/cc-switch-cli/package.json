@@ -1,0 +1,17 @@
+{
+  "name": "cc-switch-cli",
+  "version": "3.16.4-modelhub.1",
+  "description": "Headless CC Switch proxy for Claude Code and ByteDance ModelHub",
+  "type": "module",
+  "bin": {
+    "ccsc": "bin/cc-switch-cli.js",
+    "cc-switch-cli": "bin/cc-switch-cli.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}

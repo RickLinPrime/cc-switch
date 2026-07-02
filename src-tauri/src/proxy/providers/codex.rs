@@ -19,6 +19,30 @@ use toml::Value as TomlValue;
 static CODEX_CLIENT_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(codex_vscode|codex_cli_rs)/[\d.]+").unwrap());
 
+const BYTEDANCE_MODELHUB_PROVIDER_TYPE: &str = "bytedance_modelhub";
+
+fn is_bytedance_modelhub_provider(provider: &Provider) -> bool {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.provider_type.as_deref())
+        == Some(BYTEDANCE_MODELHUB_PROVIDER_TYPE)
+}
+
+fn append_modelhub_ak(base_url: &str, api_key: Option<&str>) -> String {
+    if base_url.contains("?ak=") || base_url.contains("&ak=") {
+        return base_url.to_string();
+    }
+
+    let Some(api_key) = api_key.map(str::trim).filter(|key| !key.is_empty()) else {
+        return base_url.to_string();
+    };
+
+    let encoded_key = url::form_urlencoded::byte_serialize(api_key.as_bytes()).collect::<String>();
+    let separator = if base_url.contains('?') { '&' } else { '?' };
+    format!("{base_url}{separator}ak={encoded_key}")
+}
+
 /// Codex 适配器
 pub struct CodexAdapter;
 
@@ -480,53 +504,71 @@ impl ProviderAdapter for CodexAdapter {
     }
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
-        // 1. 尝试直接获取 base_url 字段
-        if let Some(url) = provider
+        let base_url = if let Some(url) = provider
             .settings_config
             .get("base_url")
             .and_then(|v| v.as_str())
         {
-            return Ok(url.trim_end_matches('/').to_string());
-        }
-
-        // 2. 尝试 baseURL
-        if let Some(url) = provider
+            url.trim_end_matches('/').to_string()
+        } else if let Some(url) = provider
             .settings_config
             .get("baseURL")
             .and_then(|v| v.as_str())
         {
-            return Ok(url.trim_end_matches('/').to_string());
-        }
-
-        // 3. 尝试从 config 对象中获取
-        if let Some(config) = provider.settings_config.get("config") {
+            url.trim_end_matches('/').to_string()
+        } else if let Some(config) = provider.settings_config.get("config") {
             if let Some(url) = config.get("base_url").and_then(|v| v.as_str()) {
-                return Ok(url.trim_end_matches('/').to_string());
-            }
-
-            // 尝试解析 TOML 字符串格式
-            if let Some(config_str) = config.as_str() {
+                url.trim_end_matches('/').to_string()
+            } else if let Some(config_str) = config.as_str() {
                 if let Some(start) = config_str.find("base_url = \"") {
                     let rest = &config_str[start + 12..];
                     if let Some(end) = rest.find('"') {
-                        return Ok(rest[..end].trim_end_matches('/').to_string());
+                        rest[..end].trim_end_matches('/').to_string()
+                    } else {
+                        return Err(ProxyError::ConfigError(
+                            "Codex Provider 缺少 base_url 配置".to_string(),
+                        ));
                     }
-                }
-                if let Some(start) = config_str.find("base_url = '") {
+                } else if let Some(start) = config_str.find("base_url = '") {
                     let rest = &config_str[start + 12..];
                     if let Some(end) = rest.find('\'') {
-                        return Ok(rest[..end].trim_end_matches('/').to_string());
+                        rest[..end].trim_end_matches('/').to_string()
+                    } else {
+                        return Err(ProxyError::ConfigError(
+                            "Codex Provider 缺少 base_url 配置".to_string(),
+                        ));
                     }
+                } else {
+                    return Err(ProxyError::ConfigError(
+                        "Codex Provider 缺少 base_url 配置".to_string(),
+                    ));
                 }
+            } else {
+                return Err(ProxyError::ConfigError(
+                    "Codex Provider 缺少 base_url 配置".to_string(),
+                ));
             }
+        } else {
+            return Err(ProxyError::ConfigError(
+                "Codex Provider 缺少 base_url 配置".to_string(),
+            ));
+        };
+
+        if is_bytedance_modelhub_provider(provider) {
+            return Ok(append_modelhub_ak(
+                &base_url,
+                self.extract_key(provider).as_deref(),
+            ));
         }
 
-        Err(ProxyError::ConfigError(
-            "Codex Provider 缺少 base_url 配置".to_string(),
-        ))
+        Ok(base_url)
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<AuthInfo> {
+        if is_bytedance_modelhub_provider(provider) {
+            return None;
+        }
+
         self.extract_key(provider)
             .map(|key| AuthInfo::new(key, AuthStrategy::Bearer))
     }
@@ -653,6 +695,36 @@ experimental_bearer_token = "sk-config-key"
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-env-key-12345678");
+    }
+
+    #[test]
+    fn test_modelhub_provider_uses_query_key_without_auth_headers() {
+        let adapter = CodexAdapter::new();
+        let mut provider = create_provider(json!({
+            "config": r#"
+model_provider = "bytedance_modelhub"
+model = "gpt-5.5-2026-04-24"
+
+[model_providers.bytedance_modelhub]
+name = "ByteDance ModelHub"
+base_url = "https://aidp.bytedance.net/api/modelhub/online/v2/crawl"
+wire_api = "responses"
+"#,
+            "auth": {
+                "OPENAI_API_KEY": "modelhub-ak"
+            }
+        }));
+        provider.meta = Some(crate::provider::ProviderMeta {
+            provider_type: Some("bytedance_modelhub".to_string()),
+            api_format: Some("openai_chat".to_string()),
+            ..Default::default()
+        });
+
+        assert!(adapter.extract_auth(&provider).is_none());
+        assert_eq!(
+            adapter.extract_base_url(&provider).unwrap(),
+            "https://aidp.bytedance.net/api/modelhub/online/v2/crawl?ak=modelhub-ak"
+        );
     }
 
     #[test]

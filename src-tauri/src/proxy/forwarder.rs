@@ -37,6 +37,7 @@ use tauri::Manager;
 use tokio::sync::RwLock;
 
 const PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
+const BYTEDANCE_MODELHUB_PROVIDER_TYPE: &str = "bytedance_modelhub";
 
 pub struct ForwardResult {
     pub response: ProxyResponse,
@@ -50,6 +51,14 @@ pub struct ForwardResult {
     /// 活跃连接 RAII guard：随响应一起流转到 response_processor / handle_claude_transform，
     /// 最终被 move 进流式 body future（或非流式响应作用域），覆盖整个响应生命周期。
     pub(crate) connection_guard: Option<ActiveConnectionGuard>,
+}
+
+fn provider_forces_full_url(provider: &Provider) -> bool {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.provider_type.as_deref())
+        == Some(BYTEDANCE_MODELHUB_PROVIDER_TYPE)
 }
 
 pub struct ForwardError {
@@ -1108,11 +1117,12 @@ impl RequestForwarder {
         // 使用适配器提取 base_url
         let mut base_url = adapter.extract_base_url(provider)?;
 
-        let is_full_url = provider
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.is_full_url)
-            .unwrap_or(false);
+        let is_full_url = provider_forces_full_url(provider)
+            || provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.is_full_url)
+                .unwrap_or(false);
 
         // GitHub Copilot API 使用 /chat/completions（无 /v1 前缀）
         let is_copilot = provider
@@ -3630,6 +3640,21 @@ mod tests {
             let will_replace = is_copilot && !is_full_url;
             assert_eq!(will_replace, should_replace, "{desc}");
         }
+    }
+
+    #[test]
+    fn bytedance_modelhub_forces_full_url_for_legacy_provider_meta() {
+        let provider = test_provider_with_type(Some("bytedance_modelhub"));
+
+        assert!(
+            provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.is_full_url)
+                .is_none(),
+            "test fixture must model legacy data missing isFullUrl"
+        );
+        assert!(provider_forces_full_url(&provider));
     }
 
     // ===== P3: forwarder 层 media 开关回归测试 =====
